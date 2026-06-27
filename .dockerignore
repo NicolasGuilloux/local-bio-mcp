@@ -1,0 +1,9 @@
+.git
+.github
+.devenv
+.direnv
+bin
+*.md
+docs
+devenv.*
+.envrc

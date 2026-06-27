@@ -1,0 +1,17 @@
+# Go
+/bin/
+*.test
+*.out
+coverage.*
+
+# devenv / direnv
+.devenv*
+/.direnv
+.pre-commit-config.yaml
+devenv.local.nix
+
+# OS / editors
+.DS_Store
+*.swp
+.idea/
+.vscode/
