@@ -117,9 +117,10 @@ docker run --rm -p 8080:8080 -v localbio:/data local-bio-mcp
 # -> MCP Streamable HTTP on http://localhost:8080
 ```
 
-Pre-built images are published to GHCR:
-`ghcr.io/<owner>/local-bio-mcp` — `latest`/`edge`/`sha-<short>` on every push to
-`main`, and `vX.Y.Z` / `X.Y` on tagged releases.
+Pre-built images are published to GHCR `ghcr.io/<owner>/local-bio-mcp`:
+
+- pushes to `main` → `main` and `sha-<short>`
+- tagged releases (`v*`) → `vX.Y.Z`, `X.Y` and `latest`
 
 ```sh
 docker run --rm -p 8080:8080 -v localbio:/data ghcr.io/<owner>/local-bio-mcp:latest
