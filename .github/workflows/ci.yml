@@ -49,3 +49,52 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
+
+  binaries:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64, ext: ".exe" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          out="localbio-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          go build -trimpath -ldflags "-s -w -X main.version=ci-${GITHUB_SHA::7}" -o "dist/${out}" ./cmd/localbio
+      - uses: actions/upload-artifact@v4
+        with:
+          name: localbio-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: local-bio-mcp:ci
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+      - name: Smoke test image
+        run: docker run --rm local-bio-mcp:ci --version
