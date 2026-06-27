@@ -90,10 +90,10 @@ localbio mcp                 # stdio (for Claude Desktop, etc.)
 localbio mcp http :8080      # Streamable HTTP
 ```
 
-Tools exposed: `localbio_login`, `localbio_logout`, `localbio_account_info`,
-`localbio_store_search`, `localbio_store_set`, `localbio_product_search`,
-`localbio_basket_get`, `localbio_basket_add`, `localbio_basket_remove`,
-`localbio_orders_list`, `localbio_order_detail`. Tool results are returned as
+Tools exposed: `login`, `logout`, `account_info`,
+`store_search`, `store_set`, `product_search`,
+`basket_get`, `basket_add`, `basket_remove`,
+`orders_list`, `order_detail`. Tool results are returned as
 JSON text, friendly for LLM consumption.
 
 ### Claude Desktop (stdio) example

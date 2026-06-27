@@ -51,7 +51,7 @@ func NewServer(version string) *server.MCPServer {
 		server.WithInstructions(
 			"Tools to drive a local.bio account: log in, pick a pickup point (store), "+
 				"search products, manage the basket and review orders. "+
-				"Call localbio_login first; the session token and selected store are persisted between calls.",
+				"Call login first; the session token and selected store are persisted between calls.",
 		),
 	)
 	d := &deps{geocoder: geocode.New()}
