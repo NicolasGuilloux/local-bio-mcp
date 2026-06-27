@@ -6,8 +6,9 @@
 // mismatch, returns a 422 whose body is a per-line diff of
 // `{field: [valueYouSent, expectedValue]}`. We use that as a correction oracle:
 // build a best-guess line, post it, apply the server's expected values, retry.
-// Existing lines are the server's own objects and round-trip unchanged. We never
-// send `payed`/`setupPayment:true`, so no payment is ever initiated.
+// Existing lines are the server's own objects and round-trip unchanged. The line
+// is never marked as paid and setupPayment stays false, so no payment is ever
+// initiated.
 package basket
 
 import (

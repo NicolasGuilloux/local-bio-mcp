@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -30,7 +29,7 @@ func newLoginCmd(a *app) *cobra.Command {
 			}
 			if password == "" {
 				fmt.Fprint(cmd.OutOrStdout(), "Password: ")
-				b, err := term.ReadPassword(int(syscall.Stdin))
+				b, err := term.ReadPassword(int(os.Stdin.Fd()))
 				fmt.Fprintln(cmd.OutOrStdout())
 				if err != nil {
 					return fmt.Errorf("read password: %w", err)

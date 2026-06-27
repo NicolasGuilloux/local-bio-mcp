@@ -165,5 +165,3 @@ func (c *Client) CatalogueProduct(ctx context.Context, storeRef, productID strin
 	}
 	return nil, fmt.Errorf("product %q not found in store %q catalogue (use `search` to find its id)", productID, storeRef)
 }
-
-

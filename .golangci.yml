@@ -7,6 +7,15 @@ linters:
     - misspell
     - unconvert
     - revive
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*os.File).Close
+        - (io.ReadCloser).Close
+        - (io.Closer).Close
   exclusions:
     rules:
       - path: _test\.go
