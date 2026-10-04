@@ -18,8 +18,8 @@ func newOrdersCmd(a *app) *cobra.Command {
 			"an order id (full or unique prefix).",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if a.cfg.Token == "" {
-				return fmt.Errorf("not logged in (run `localbio login`)")
+			if err := a.requireAuth(cmd.Context()); err != nil {
+				return err
 			}
 			c := a.client()
 			if len(args) == 1 {

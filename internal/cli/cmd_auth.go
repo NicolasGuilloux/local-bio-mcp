@@ -70,7 +70,9 @@ func newLogoutCmd(a *app) *cobra.Command {
 		Short: "Log out and clear stored tokens",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.cfg.Token != "" {
-				_ = a.client().Logout(cmd.Context()) // best effort
+				c := a.client()
+				c.Email, c.Password = "", "" // no auto-login just to log out
+				_ = c.Logout(cmd.Context())  // best effort
 			}
 			a.cfg.Clear()
 			if err := a.cfg.Save(); err != nil {
@@ -90,8 +92,8 @@ func newInfoCmd(a *app) *cobra.Command {
 		Use:   "info",
 		Short: "Show info about your account",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if a.cfg.Token == "" {
-				return fmt.Errorf("not logged in (run `localbio login`)")
+			if err := a.requireAuth(cmd.Context()); err != nil {
+				return err
 			}
 			acc, err := a.client().Me(cmd.Context())
 			if err != nil {

@@ -8,13 +8,15 @@ import (
 	"strings"
 )
 
+const loginPath = "/customers/login"
+
 // Login authenticates and returns the login response. The bearer token is
 // extracted from the payload (the SPA reads it at `auth.id`).
 func (c *Client) Login(ctx context.Context, email, password string) (*LoginResponse, error) {
 	body := map[string]string{"email": email, "password": password}
 
 	var raw json.RawMessage
-	if err := c.do(ctx, http.MethodPost, "/customers/login", nil, body, &raw); err != nil {
+	if err := c.do(ctx, http.MethodPost, loginPath, nil, body, &raw); err != nil {
 		return nil, err
 	}
 	var lr LoginResponse

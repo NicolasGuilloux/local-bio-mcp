@@ -3,20 +3,23 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nover/local-bio-mcp/internal/basket"
+	"github.com/nover/local-bio-mcp/internal/client"
 	"github.com/nover/local-bio-mcp/internal/config"
 )
 
 // registerTools wires every tool onto the server.
 func registerTools(s *server.MCPServer, d *deps) {
 	s.AddTool(mcp.NewTool("login",
-		mcp.WithDescription("Log in to local.bio and persist the session token for subsequent calls."),
-		mcp.WithString("email", mcp.Required(), mcp.Description("Account email address.")),
-		mcp.WithString("password", mcp.Required(), mcp.Description("Account password.")),
+		mcp.WithDescription("Log in to local.bio and persist the session token for subsequent calls. "+
+			"email/password default to the server's LOCALBIO_EMAIL/LOCALBIO_PASSWORD when configured."),
+		mcp.WithString("email", mcp.Description("Account email address (defaults to LOCALBIO_EMAIL).")),
+		mcp.WithString("password", mcp.Description("Account password (defaults to LOCALBIO_PASSWORD).")),
 	), d.handleLogin)
 
 	s.AddTool(mcp.NewTool("logout",
@@ -112,10 +115,17 @@ func (d *deps) handleLogin(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 	if err != nil {
 		return errResult(err)
 	}
+	envEmail, envPassword := envCredentials()
 	email := argString(req, "email")
 	password := argString(req, "password")
+	if email == "" {
+		email = envEmail
+	}
+	if password == "" {
+		password = envPassword
+	}
 	if email == "" || password == "" {
-		return errResult(fmt.Errorf("email and password are required"))
+		return errResult(fmt.Errorf("email and password are required (or set LOCALBIO_EMAIL/LOCALBIO_PASSWORD)"))
 	}
 	lr, err := d.client(cfg).Login(ctx, email, password)
 	if err != nil {
@@ -139,7 +149,9 @@ func (d *deps) handleLogout(ctx context.Context, _ mcp.CallToolRequest) (*mcp.Ca
 		return errResult(err)
 	}
 	if cfg.Token != "" {
-		_ = d.client(cfg).Logout(ctx)
+		c := d.client(cfg)
+		c.Email, c.Password = "", "" // no auto-login just to log out
+		_ = c.Logout(ctx)
 	}
 	cfg.Clear()
 	if err := cfg.Save(); err != nil {
@@ -149,12 +161,9 @@ func (d *deps) handleLogout(ctx context.Context, _ mcp.CallToolRequest) (*mcp.Ca
 }
 
 func (d *deps) handleInfo(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg, err := d.load()
+	cfg, err := d.requireAuth(ctx)
 	if err != nil {
 		return errResult(err)
-	}
-	if cfg.Token == "" {
-		return errResult(fmt.Errorf("not logged in; call login first"))
 	}
 	acc, err := d.client(cfg).Me(ctx)
 	if err != nil {
@@ -217,7 +226,7 @@ func (d *deps) handleProductSearch(ctx context.Context, req mcp.CallToolRequest)
 }
 
 func (d *deps) handleBasketGet(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg, err := d.requireAuth()
+	cfg, err := d.requireAuth(ctx)
 	if err != nil {
 		return errResult(err)
 	}
@@ -229,7 +238,7 @@ func (d *deps) handleBasketGet(ctx context.Context, _ mcp.CallToolRequest) (*mcp
 }
 
 func (d *deps) handleBasketAdd(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg, err := d.requireAuth()
+	cfg, err := d.requireAuth(ctx)
 	if err != nil {
 		return errResult(err)
 	}
@@ -245,7 +254,7 @@ func (d *deps) handleBasketAdd(ctx context.Context, req mcp.CallToolRequest) (*m
 }
 
 func (d *deps) handleBasketRemove(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg, err := d.requireAuth()
+	cfg, err := d.requireAuth(ctx)
 	if err != nil {
 		return errResult(err)
 	}
@@ -261,7 +270,7 @@ func (d *deps) handleBasketRemove(ctx context.Context, req mcp.CallToolRequest) 
 }
 
 func (d *deps) handleOrdersList(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg, err := d.requireAuth()
+	cfg, err := d.requireAuth(ctx)
 	if err != nil {
 		return errResult(err)
 	}
@@ -273,7 +282,7 @@ func (d *deps) handleOrdersList(ctx context.Context, _ mcp.CallToolRequest) (*mc
 }
 
 func (d *deps) handleOrderDetail(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg, err := d.requireAuth()
+	cfg, err := d.requireAuth(ctx)
 	if err != nil {
 		return errResult(err)
 	}
@@ -288,13 +297,18 @@ func (d *deps) handleOrderDetail(ctx context.Context, req mcp.CallToolRequest) (
 	return jsonResult(o.Raw)
 }
 
-func (d *deps) requireAuth() (*config.Config, error) {
+// requireAuth loads the config and ensures there is a session, logging in from
+// the environment credentials when possible.
+func (d *deps) requireAuth(ctx context.Context) (*config.Config, error) {
 	cfg, err := d.load()
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("not logged in; call login first")
+	if err := d.client(cfg).EnsureAuth(ctx); err != nil {
+		if errors.Is(err, client.ErrNotLoggedIn) {
+			return nil, fmt.Errorf("not logged in; call login first")
+		}
+		return nil, err
 	}
 	return cfg, nil
 }

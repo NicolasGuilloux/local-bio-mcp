@@ -3,6 +3,7 @@
 package mcp
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -34,12 +35,29 @@ func (d *deps) load() (*config.Config, error) {
 	return cfg, nil
 }
 
+// client builds an API client from cfg. With LOCALBIO_EMAIL/LOCALBIO_PASSWORD
+// set, it logs in automatically (missing or expired session) and persists the
+// new token.
 func (d *deps) client(cfg *config.Config) *client.Client {
+	email, password := envCredentials()
 	return client.New(
 		client.WithBaseURL(cfg.BaseURL),
 		client.WithApp(cfg.App),
 		client.WithToken(cfg.Token),
+		client.WithCredentials(email, password),
+		client.WithTokenRefresh(func(token string) {
+			cfg.Token = token
+			cfg.Email = email
+			if err := cfg.Save(); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not persist new session token: %v\n", err)
+			}
+		}),
 	)
+}
+
+// envCredentials returns the account credentials from the environment.
+func envCredentials() (email, password string) {
+	return os.Getenv("LOCALBIO_EMAIL"), os.Getenv("LOCALBIO_PASSWORD")
 }
 
 // NewServer builds the MCP server with every local.bio tool registered.
@@ -51,7 +69,8 @@ func NewServer(version string) *server.MCPServer {
 		server.WithInstructions(
 			"Tools to drive a local.bio account: log in, pick a pickup point (store), "+
 				"search products, manage the basket and review orders. "+
-				"Call login first; the session token and selected store are persisted between calls.",
+				"Call login first (unless LOCALBIO_EMAIL/LOCALBIO_PASSWORD are configured, in which case "+
+				"login is automatic); the session token and selected store are persisted between calls.",
 		),
 	)
 	d := &deps{geocoder: geocode.New()}

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,5 +67,90 @@ func TestDeriveLegacyBase(t *testing.T) {
 	c := New(WithBaseURL("https://www.local.bio/api-v2"))
 	if c.LegacyBaseURL != "https://www.local.bio/api" {
 		t.Fatalf("legacy base = %q, want https://www.local.bio/api", c.LegacyBaseURL)
+	}
+}
+
+func TestReloginOn401(t *testing.T) {
+	var logins, meCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/customers/login":
+			logins++
+			_, _ = w.Write([]byte(`{"id":"fresh","ttl":1209600,"userId":"u1"}`))
+		case "/customers/me":
+			meCalls++
+			if r.Header.Get("Authorization") != "fresh" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"message":"expired"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"email":"a@b.c"}`))
+		}
+	}))
+	defer srv.Close()
+
+	var refreshed string
+	c := New(WithBaseURL(srv.URL), WithToken("stale"),
+		WithCredentials("a@b.c", "pw"),
+		WithTokenRefresh(func(tok string) { refreshed = tok }))
+	acc, err := c.Me(context.Background())
+	if err != nil {
+		t.Fatalf("me: %v", err)
+	}
+	if acc.Email != "a@b.c" || logins != 1 || meCalls != 2 {
+		t.Fatalf("email=%q logins=%d meCalls=%d", acc.Email, logins, meCalls)
+	}
+	if c.Token != "fresh" || refreshed != "fresh" {
+		t.Fatalf("token=%q refreshed=%q", c.Token, refreshed)
+	}
+}
+
+func TestNoReloginWithoutCredentials(t *testing.T) {
+	var logins int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/customers/login" {
+			logins++
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c := New(WithBaseURL(srv.URL), WithToken("stale"))
+	if _, err := c.Me(context.Background()); !IsUnauthorized(err) {
+		t.Fatalf("expected 401, got %v", err)
+	}
+	if logins != 0 {
+		t.Fatalf("unexpected login attempts: %d", logins)
+	}
+}
+
+func TestBadCredentialsDoNotLoop(t *testing.T) {
+	var logins int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/customers/login" {
+			logins++
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c := New(WithBaseURL(srv.URL), WithToken("stale"), WithCredentials("a@b.c", "wrong"))
+	if _, err := c.Me(context.Background()); err == nil {
+		t.Fatal("expected an error")
+	}
+	if logins != 1 {
+		t.Fatalf("logins = %d, want 1", logins)
+	}
+}
+
+func TestEnsureAuth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"tok","ttl":1,"userId":"u1"}`))
+	}))
+	defer srv.Close()
+	if err := New(WithBaseURL(srv.URL)).EnsureAuth(context.Background()); !errors.Is(err, ErrNotLoggedIn) {
+		t.Fatalf("want ErrNotLoggedIn, got %v", err)
+	}
+	c := New(WithBaseURL(srv.URL), WithCredentials("a@b.c", "pw"))
+	if err := c.EnsureAuth(context.Background()); err != nil || c.Token != "tok" {
+		t.Fatalf("err=%v token=%q", err, c.Token)
 	}
 }

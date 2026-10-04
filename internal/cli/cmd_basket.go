@@ -29,7 +29,7 @@ func newBasketGetCmd(a *app) *cobra.Command {
 		Use:   "get",
 		Short: "Show current basket contents",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := requireAuth(a); err != nil {
+			if err := a.requireAuth(cmd.Context()); err != nil {
 				return err
 			}
 			cart, err := a.basketService().Get(cmd.Context())
@@ -47,7 +47,7 @@ func newBasketAddCmd(a *app) *cobra.Command {
 		Short: "Add a product to your basket (default qty: 1)",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(a); err != nil {
+			if err := a.requireAuth(cmd.Context()); err != nil {
 				return err
 			}
 			qty, err := parseQty(args, 1)
@@ -69,7 +69,7 @@ func newBasketRemoveCmd(a *app) *cobra.Command {
 		Short: "Remove a product (default: remove all)",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireAuth(a); err != nil {
+			if err := a.requireAuth(cmd.Context()); err != nil {
 				return err
 			}
 			qty, err := parseQty(args, 0) // 0 => remove all

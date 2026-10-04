@@ -78,8 +78,14 @@ State (session token, selected store and local basket) is stored in
 | `LOCALBIO_API_BASE`  | API base URL (default `https://www.local.bio/api-v2`) |
 | `LOCALBIO_APP`       | Tenant header (default `local.bio`)                |
 | `LOCALBIO_TOKEN`     | Session token (overrides stored one)               |
-| `LOCALBIO_EMAIL` / `LOCALBIO_PASSWORD` | Non-interactive login            |
+| `LOCALBIO_EMAIL` / `LOCALBIO_PASSWORD` | Non-interactive login + automatic re-login (see below) |
 | `LOCALBIO_CONFIG_DIR`| Where to persist config                            |
+
+When `LOCALBIO_EMAIL` and `LOCALBIO_PASSWORD` are set, both the CLI and the MCP
+server log in on their own: before an authenticated call when no session token
+is stored, and again (then retry the request once) whenever local.bio answers
+`401`. The fresh token is persisted to the config. The MCP `login` tool also
+falls back to these variables when called without arguments.
 
 ## MCP server
 

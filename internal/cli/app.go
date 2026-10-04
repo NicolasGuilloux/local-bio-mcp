@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
 
 	"github.com/nover/local-bio-mcp/internal/client"
@@ -33,13 +36,35 @@ func newApp() (*app, error) {
 	return &app{cfg: cfg, format: "text", geocoder: geocode.New()}, nil
 }
 
-// client builds an API client from the current config.
+// client builds an API client from the current config. When LOCALBIO_EMAIL and
+// LOCALBIO_PASSWORD are set, it logs in automatically (missing or expired
+// session) and persists the new token.
 func (a *app) client() *client.Client {
 	return client.New(
 		client.WithBaseURL(a.cfg.BaseURL),
 		client.WithApp(a.cfg.App),
 		client.WithToken(a.cfg.Token),
+		client.WithCredentials(os.Getenv("LOCALBIO_EMAIL"), os.Getenv("LOCALBIO_PASSWORD")),
+		client.WithTokenRefresh(func(token string) {
+			a.cfg.Token = token
+			a.cfg.Email = os.Getenv("LOCALBIO_EMAIL")
+			if err := a.cfg.Save(); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not persist new session token: %v\n", err)
+			}
+		}),
 	)
+}
+
+// requireAuth ensures there is a session, logging in from the environment
+// credentials when possible.
+func (a *app) requireAuth(ctx context.Context) error {
+	if err := a.client().EnsureAuth(ctx); err != nil {
+		if errors.Is(err, client.ErrNotLoggedIn) {
+			return fmt.Errorf("not logged in (run `localbio login` or set LOCALBIO_EMAIL/LOCALBIO_PASSWORD)")
+		}
+		return err
+	}
+	return nil
 }
 
 func (a *app) jsonOutput() bool { return a.format == "json" }

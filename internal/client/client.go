@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,6 +36,14 @@ type Client struct {
 	Token         string
 	Debug         bool
 
+	// Email/Password, when set, let the client log in on its own: lazily via
+	// EnsureAuth, and transparently when a request comes back 401.
+	Email    string
+	Password string
+	// OnTokenRefresh is called with the new token after an automatic login, so
+	// callers can persist it.
+	OnTokenRefresh func(token string)
+
 	http *http.Client
 }
 
@@ -43,6 +52,17 @@ type Option func(*Client)
 
 // WithToken sets the bearer token used for authenticated calls.
 func WithToken(t string) Option { return func(c *Client) { c.Token = t } }
+
+// WithCredentials enables automatic (re-)login with the given account. Empty
+// values disable it.
+func WithCredentials(email, password string) Option {
+	return func(c *Client) { c.Email, c.Password = email, password }
+}
+
+// WithTokenRefresh registers a callback invoked after an automatic login.
+func WithTokenRefresh(fn func(token string)) Option {
+	return func(c *Client) { c.OnTokenRefresh = fn }
+}
 
 // WithBaseURL overrides the API base URL. The legacy base is derived from it
 // (…/api-v2 → …/api) unless set explicitly via WithLegacyBaseURL.
@@ -132,7 +152,59 @@ func (c *Client) doLegacy(ctx context.Context, method, path string, query url.Va
 	return c.doBase(ctx, c.LegacyBaseURL, method, path, query, body, out)
 }
 
+// HasCredentials reports whether the client can log in on its own.
+func (c *Client) HasCredentials() bool { return c.Email != "" && c.Password != "" }
+
+// ErrNotLoggedIn is returned by EnsureAuth when there is neither a token nor
+// credentials to obtain one.
+var ErrNotLoggedIn = errors.New("not logged in")
+
+// EnsureAuth makes sure the client holds a token, logging in with the
+// configured credentials when it does not.
+func (c *Client) EnsureAuth(ctx context.Context) error {
+	if c.Token != "" {
+		return nil
+	}
+	if !c.HasCredentials() {
+		return ErrNotLoggedIn
+	}
+	return c.relogin(ctx)
+}
+
+// relogin obtains a fresh token with the configured credentials.
+func (c *Client) relogin(ctx context.Context) error {
+	lr, err := c.Login(ctx, c.Email, c.Password)
+	if err != nil {
+		return fmt.Errorf("automatic login: %w", err)
+	}
+	token := lr.TokenValue()
+	if token == "" {
+		return fmt.Errorf("automatic login: no token in response (fields: %s)", lr.Fields())
+	}
+	c.Token = token
+	if c.OnTokenRefresh != nil {
+		c.OnTokenRefresh(token)
+	}
+	return nil
+}
+
 func (c *Client) doBase(ctx context.Context, base, method, path string, query url.Values, body any, out any) error {
+	err := c.doOnce(ctx, base, method, path, query, body, out)
+	// Session expired (or never existed): log in again and retry once. The
+	// login endpoint itself is excluded so bad credentials don't loop.
+	if IsUnauthorized(err) && c.HasCredentials() && path != loginPath {
+		if c.Debug {
+			fmt.Fprintf(os.Stderr, "[localbio] 401 on %s %s, logging in again\n", method, path)
+		}
+		if lerr := c.relogin(ctx); lerr != nil {
+			return lerr
+		}
+		return c.doOnce(ctx, base, method, path, query, body, out)
+	}
+	return err
+}
+
+func (c *Client) doOnce(ctx context.Context, base, method, path string, query url.Values, body any, out any) error {
 	u := base + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
